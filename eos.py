@@ -17,16 +17,19 @@ class eos ():
         self.server.serve_forever()
 
     def defaultEosHandler(self, addr, *args):
-        print("[{}] {}".format(addr,args))
-
+#        print("[{}] {}".format(addr,args))
+        return
     def oscFaderHandler(self, addr, *args):
         (page,fader)=addr.split("/")[3:5]
         page=int(page)
         fader=int(fader)
         level=100*float(args[0])
-        print("Page {} Fader {} is at {:.1f}".format(page,fader,level))
+#        print("Page {} Fader {} is at {:.1f}".format(page,fader,level))
         if "FaderLevel" in self.boundHandlers:self.boundHandlers["FaderLevel"](page,fader,level)
 
     def bindHandler(self,name,handler):
         print("Eos binding handler {}".format(name))
         self.boundHandlers[name]=handler
+
+    def setFaderPage(self,page):
+        self.client.send_message("/eos/fader/1/config/{}/8".format(page),None)

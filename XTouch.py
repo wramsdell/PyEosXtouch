@@ -19,20 +19,29 @@ class XtouchControl(object):
         if self.debug: print(self.name)
 
 class Knob(XtouchControl):
-    def __init__(self,channel,midiIn,midiOut,pressAndHoldDuration,doublePressDuration):
+    def __init__(self,channel,midiIn,midiOut,pressAndHoldDuration,doublePressDuration,boundHandlers,vTable=[20,1000],debugMode=False):
         self.name="Knob %d"%channel
         self.val=0
+        self.boundHandlers=boundHandlers
         self.pressAndHoldDuration=pressAndHoldDuration
         self.doublePressDuration=doublePressDuration
+        self.channel=channel
         self.t=threading.Timer(self.pressAndHoldDuration,self.pressAndHoldHandler)
         self.lastPress=0
-        XtouchControl.__init__(self,channel,midiIn,midiOut)
+        self.lastRotationTime=time.time()
+        self.vTable=vTable
+        XtouchControl.__init__(self,channel,midiIn,midiOut,debugMode)
 
 
     def pressHandler(self):
         if self.debug: print("Knob %d pressed"%self.channel)
         self.t=threading.Timer(self.pressAndHoldDuration,self.pressAndHoldHandler)
         self.t.start()
+        if "KnobPress" in self.boundHandlers[self.channel]:
+            retval={}
+            retval["obj"]=self
+            retval["channel"]=self.channel
+            self.boundHandlers[self.channel]["KnobPress"](retval)
 
     def releaseHandler(self):
         if self.debug: print("Knob %d released"%self.channel)
@@ -42,35 +51,85 @@ class Knob(XtouchControl):
             self.doublePressHandler()
         else:
             self.lastPress=time.time()
+        if "KnobRelease" in self.boundHandlers[self.channel]:
+            retval={}
+            retval["obj"]=self
+            retval["channel"]=self.channel
+            self.boundHandlers[self.channel]["KnobRelease"](retval)
 
     def incrementHandler(self,magnitude):
         self.val+=magnitude
         if self.debug: print("Knob %d increment, new value %d"%(self.channel,self.val))
         self.t.cancel()
+        deltaT=time.time()-self.lastRotationTime
+        if deltaT==0: deltaT=.001
+        self.lastRotationTime=time.time()
+        velocity=magnitude/deltaT
+        speedRange=1
+        for i in range(len(self.vTable)):
+            if velocity>self.vTable[i]: speedRange=i+2
+        if "KnobIncrement" in self.boundHandlers[self.channel]:
+            retval={}
+            retval["obj"]=self
+            retval["channel"]=self.channel
+            retval["value"]=self.val
+            retval["magnitude"]=magnitude
+            retval["velocity"]=velocity
+            retval["speedRange"]=speedRange
+            self.boundHandlers[self.channel]["KnobIncrement"](retval)
 
     def decrementHandler(self,magnitude):
         self.val-=magnitude
         if self.debug: print("Knob %d decrement, new value %d"%(self.channel,self.val))
         self.t.cancel()
+        deltaT=time.time()-self.lastRotationTime
+        if deltaT==0: deltaT=.001
+        self.lastRotationTime=time.time()
+        velocity=magnitude/deltaT
+        speedRange=1
+        for i in range(len(self.vTable)):
+            if velocity>self.vTable[i]: speedRange=i+2
+        if "KnobDecrement" in self.boundHandlers[self.channel]:
+            retval={}
+            retval["obj"]=self
+            retval["channel"]=self.channel
+            retval["value"]=self.val
+            retval["magnitude"]=magnitude
+            retval["velocity"]=velocity
+            retval["speedRange"]=speedRange
+            self.boundHandlers[self.channel]["KnobDecrement"](retval)
 
     def pressAndHoldHandler(self):
         if self.debug: print("Knob %d press and hold"%self.channel)
+        if "KnobPressAndHold" in self.boundHandlers[self.channel]:
+            retval={}
+            retval["obj"]=self
+            retval["channel"]=self.channel
+            self.boundHandlers[self.channel]["KnobPressAndHold"](retval)
 
     def doublePressHandler(self):
         if self.debug: print("Knob %d double press"%self.channel)
+        if "KnobDoublePress" in self.boundHandlers[self.channel]:
+            retval={}
+            retval["obj"]=self
+            retval["channel"]=self.channel
+            self.boundHandlers[self.channel]["KnobDoublePress"](retval)
 
 class KnobRing(XtouchControl):
-    def __init__(self,channel,midiIn,midiOut):
+    def __init__(self,channel,midiIn,midiOut,debugMode=False):
         self.channel=channel
         self.name="Knob Ring %d"%channel
-        XtouchControl.__init__(self,channel,midiIn,midiOut)
+        XtouchControl.__init__(self,channel,midiIn,midiOut,debugMode)
+
+    def set(self,val):
+        self.midiOut.write_short(0xb0,0x30+self.channel,val)
 
 class ScribbleStripLine(XtouchControl):
-    def __init__(self,channel,midiIn,midiOut,lineNumber):
+    def __init__(self,channel,midiIn,midiOut,lineNumber,debugMode=False):
         self.channel=channel
         self.lineNumber=lineNumber
         self.name="Scribble Strip %d Line %d"%(channel,lineNumber)
-        XtouchControl.__init__(self,channel,midiIn,midiOut)
+        XtouchControl.__init__(self,channel,midiIn,midiOut,debugMode)
         self.text=""
         self.blinkState=0
         self.blinkPeriod=0
@@ -106,21 +165,68 @@ class ScribbleStripLine(XtouchControl):
             self.blankDisplay()
 
 class Button(XtouchControl):
-    def __init__(self,channel,midiIn,midiOut,number,pressAndHoldDuration,doublePressDuration):
+    def __init__(self,channel,midiIn,midiOut,number,pressAndHoldDuration,doublePressDuration,boundHandlers,debugMode=False):
         self.number=number
+        self.boundHandlers=boundHandlers
         self.channel=channel
         self.pressAndHoldDuration=pressAndHoldDuration
         self.doublePressDuration=doublePressDuration
         self.name="Button %d number %d"%(channel,number)
-        XtouchControl.__init__(self,channel,midiIn,midiOut)
+        XtouchControl.__init__(self,channel,midiIn,midiOut,debugMode)
         self.led=ButtonLed(self.channel,midiIn,midiOut,self.number)
+        self.lastPress=0
+
+    def pressHandler(self):
+        if self.debug: print("Button channel {} number {} pressed".format(self.channel,self.number))
+#        print("Button channel {} number {} pressed".format(self.channel,self.number))
+        self.t=threading.Timer(self.pressAndHoldDuration,self.pressAndHoldHandler)
+        self.t.start()
+        if "ButtonPress{}".format(self.number) in self.boundHandlers[self.channel]:
+            retval={}
+            retval["obj"]=self
+            retval["channel"]=self.channel
+            retval["number"]=self.number
+            self.boundHandlers[self.channel]["ButtonPress{}".format(self.number)](retval)
+
+    def releaseHandler(self):
+        if self.debug: print("Button channel {} number {} released".format(self.channel,self.number))
+        self.t.cancel()
+        if (time.time()-self.lastPress)<self.doublePressDuration:
+            self.lastPress=0    #prevent multiple calls to double-press handler if somebody's button-happy
+            self.doublePressHandler()
+        else:
+            self.lastPress=time.time()
+        if "ButtonRelease{}".format(self.number) in self.boundHandlers[self.channel]:
+            retval={}
+            retval["obj"]=self
+            retval["channel"]=self.channel
+            retval["number"]=self.number
+            self.boundHandlers[self.channel]["ButtonRelease{}".format(self.number)](retval)
+
+    def pressAndHoldHandler(self):
+        if self.debug: print("Button channel {} number {} press and hold".format(self.channel,self.number))
+        if "ButtonPressAndHold{}".format(self.number) in self.boundHandlers[self.channel]:
+            retval={}
+            retval["obj"]=self
+            retval["channel"]=self.channel
+            retval["number"]=self.number
+            self.boundHandlers[self.channel]["ButtonPressAndHold{}".format(self.number)](retval)
+
+    def doublePressHandler(self):
+        if self.debug: print("Button channel {} number {} double press".format(self.channel,self.number))
+        if "ButtonDoublePress{}".format(self.number) in self.boundHandlers[self.channel]:
+            retval={}
+            retval["obj"]=self
+            retval["channel"]=self.channel
+            retval["number"]=self.number
+            self.boundHandlers[self.channel]["ButtonDoublePress{}".format(self.number)](retval)
 
 class ButtonLed(XtouchControl):
-    def __init__(self,channel,midiIn,midiOut,number):
+    def __init__(self,channel,midiIn,midiOut,number,debugMode=False):
         self.number=number
         self.channel=channel
         self.name="Button LED %d number %d"%(channel,number)
-        XtouchControl.__init__(self,channel,midiIn,midiOut)
+        XtouchControl.__init__(self,channel,midiIn,midiOut,debugMode)
 
     def blink(self,blinkState):
         ledNumber=self.channel+(8*self.number)
@@ -130,26 +236,45 @@ class ButtonLed(XtouchControl):
             self.midiOut.write_short(0x90,ledNumber,0x00)    
 
 class VuBar(XtouchControl):
-    def __init__(self,channel,midiIn,midiOut):
+    def __init__(self,channel,midiIn,midiOut,serviceInterval=.1,debugMode=False):
         self.channel=channel
+        self.serviceInterval=serviceInterval
         self.name="VU Bar %d"%channel
-        XtouchControl.__init__(self,channel,midiIn,midiOut)
+        self.t=None
+        self.val=0
+        XtouchControl.__init__(self,channel,midiIn,midiOut,debugMode)
+
+    def set(self,val):
+        self.val=val
+        if self.val!=0:
+            self.midiOut.write_short(0xd0,16*self.channel+self.val,0x00)
+            self.t=threading.Timer(self.serviceInterval,self.timerService)
+            self.t.start()
+        else:
+            self.t.cancel()
+
+    def timerService(self):
+        self.midiOut.write_short(0xd0,16*self.channel+self.val,0x00)
+        self.t=threading.Timer(self.serviceInterval,self.timerService)
+        self.t.start()
 
 class Fader(XtouchControl):
-    def __init__(self,channel,midiIn,midiOut):
+    def __init__(self,channel,midiIn,midiOut,debugMode=False):
         self.channel=channel
         self.name="Fader %d"%channel
-        XtouchControl.__init__(self,channel,midiIn,midiOut)
+        XtouchControl.__init__(self,channel,midiIn,midiOut,debugMode)
 
 class Channel(object):
-    def __init__(self,channel,midiIn,midiOut,pressAndHoldDuration,doublePressDuration):
+    def __init__(self,channel,midiIn,midiOut,pressAndHoldDuration,doublePressDuration,boundHandlers,debugMode=False):
+        self.debug=debugMode
+        self.boundHandlers=boundHandlers
         self.channelNumber=channel
-        self.knob=Knob(channel,midiIn,midiOut,pressAndHoldDuration,doublePressDuration)
-        self.knobRing=KnobRing(channel,midiIn,midiOut)
+        self.knob=Knob(channel,midiIn,midiOut,pressAndHoldDuration,doublePressDuration,boundHandlers,debugMode=debugMode)
+        self.knobRing=KnobRing(channel,midiIn,midiOut,debugMode=debugMode)
         self.scribbleStrip=[ScribbleStripLine(channel,midiIn,midiOut,0),ScribbleStripLine(channel,midiIn,midiOut,1)]
         self.button=[]
         for i in range(4):
-            self.button.append(Button(channel,midiIn,midiOut,i,pressAndHoldDuration,doublePressDuration))
+            self.button.append(Button(channel,midiIn,midiOut,i,pressAndHoldDuration,doublePressDuration,boundHandlers,debugMode))
         self.vuBar=VuBar(channel,midiIn,midiOut)
         self.fader=Fader(channel,midiIn,midiOut)
 
@@ -158,7 +283,7 @@ class XTouch(object):
         self.debug=debugMode
         self.midiOut=None
         self.midiIn=None
-        self.boundHandlers={}
+        self.boundHandlers=[{} for sub in range(8)]
         self.blinkTable={}
         self.blinkStep=0
         pygame.midi.init()
@@ -180,11 +305,21 @@ class XTouch(object):
         self.knobVal=[0,0,0,0,0,0,0,0]
         self.channel=[]
         for i in range(8):
-            self.channel.append(Channel(i,self.midiIn,self.midiOut,pressAndHoldDuration,doublePressDuration))
+            self.channel.append(Channel(i,self.midiIn,self.midiOut,pressAndHoldDuration,doublePressDuration,self.boundHandlers,debugMode=debugMode))
         self.lastFastTime=time.time()
         self.lastSlowTime=time.time()
         self.fastTimerCallback()
         self.slowTimerCallback()
+
+    def bind(self,eventName,handler,channels=list(range(8))):
+        if isinstance(channels,int):
+            self.boundHandlers[channels][eventName]=handler
+            return 0
+        elif isinstance(channels,list):
+            for i in channels:
+                self.boundHandlers[i][eventName]=handler
+            return 0
+        else: return -1
 
     def fastTimerCallback(self):
         self.midiMessagePump()
@@ -221,15 +356,15 @@ class XTouch(object):
                     row=int(eventControl/8)
                     col=eventControl-(row*8)
                     if (eventValue==0):
-                        self.buttonReleaseHandler(row,col)
+                        self.channel[col].button[row].releaseHandler()
                     elif (eventValue==127):
-                        self.buttonPressHandler(row,col)
+                        self.channel[col].button[row].pressHandler()
                     else:
                         self.unhandledEvent("Unhandled button event Type=0x%x Control=0x%x Value=0x%x"%(eventType,eventControl,eventValue))
                 elif ((eventControl>=104)&(eventControl<=111)):
                     fader=(int(eventControl)-104)
                     if eventValue==127:
-                        self.faderTouchHandler(fader)
+                        self.faderPressHandler(fader)
                     elif eventValue==0:
                         self.faderReleaseHandler(fader)
                     else:
@@ -265,22 +400,30 @@ class XTouch(object):
             blinkState=self.blinkTable[entry]&1<<self.blinkStep
             entry.blink(blinkState)
         
-
-    def buttonPressHandler(self,row,col):
-        if self.debug: print("Button row=%d, col=%d pressed"%(row,col))
-
-    def buttonReleaseHandler(self,row,col):
-        if self.debug: print("Button row=%d, col=%d released"%(row,col))
-
-    def faderTouchHandler(self,fader):
+    def faderPressHandler(self,fader):
         if self.debug: print("Fader %d touch"%fader)
+        if "FaderPress" in self.boundHandlers[fader]:
+            retval={}
+            retval["obj"]=self
+            retval["fader"]=fader
+            self.boundHandlers[fader]["FaderPress"](retval)
 
     def faderReleaseHandler(self,fader):
         if self.debug: print("Fader %d release"%fader)
+        if "FaderRelease" in self.boundHandlers[fader]:
+            retval={}
+            retval["obj"]=self
+            retval["fader"]=fader
+            self.boundHandlers[fader]["FaderRelease"](retval)
 
     def faderLevelHandler(self,fader,level):
         if self.debug: print("Fader %d level %d"%(fader,level))
-        if "FaderLevel" in self.boundHandlers: self.boundHandlers["FaderLevel"](fader,level)
+        if "FaderLevel" in self.boundHandlers[fader]:
+            retval={}
+            retval["obj"]=self
+            retval["fader"]=fader
+            retval["level"]=level
+            self.boundHandlers[fader]["FaderLevel"](retval)
 
     def unhandledEvent(self,s):
         if self.debug: print(s)
@@ -292,7 +435,3 @@ class XTouch(object):
 
     def addBlink(self,blinkMember,blinkPattern):
         self.blinkTable[blinkMember]=blinkPattern
-
-    def bindHandler(self,name,handler):
-        print("XTouch Binding {}".format(name))
-        self.boundHandlers[name]=handler
