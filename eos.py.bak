@@ -3,13 +3,13 @@ from pythonosc import osc_server
 from pythonosc import udp_client
 
 class eos ():
-    def __init__(self,clientIp,clientPort,serverIp,serverPort):
+    def __init__(self,ip,clientPort,serverPort):
         self.boundHandlers={}
         self.dispatcher = dispatcher.Dispatcher()
         self.dispatcher.map("/eos*", self.defaultEosHandler)
         self.dispatcher.map("/eos/fader*", self.oscFaderHandler)
-        self.client = udp_client.SimpleUDPClient(clientIp,clientPort)
-        self.server = osc_server.ThreadingOSCUDPServer((serverIp,serverPort), self.dispatcher)
+        self.client = udp_client.SimpleUDPClient(ip,clientPort)
+        self.server = osc_server.ThreadingOSCUDPServer((ip,serverPort), self.dispatcher)
         self.client.send_message("/eos/subscribe",1)
         self.client.send_message("/eos/fader/1/config/8",None)
 

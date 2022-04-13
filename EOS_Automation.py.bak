@@ -29,10 +29,10 @@ def eosFaderHandler(page,fader,level): #Custom Eos fader event handler: sends th
     xt.setFader(fader-1,int(level*(16256/100)))
 
 def xtKnobIncrementHandler(arg):
-    e.client.send_message("/eos/wheel/{}".format(encoderParameters[encoderPage][arg["channel"]]),float(1+((arg["speedRange"]-1)*10)))
+    e.client.send_message("/eos/wheel/{}".format(encoderParameters[encoderPage][arg["channel"]]),float(1+((arg["speedRange"]-1)*50)))
 
 def xtKnobDecrementHandler(arg):
-    e.client.send_message("/eos/wheel/{}".format(encoderParameters[encoderPage][arg["channel"]]),float(-(1+((arg["speedRange"]-1)*10))))
+    e.client.send_message("/eos/wheel/{}".format(encoderParameters[encoderPage][arg["channel"]]),float(-(1+((arg["speedRange"]-1)*50))))
 
 def setScribbleStripText(channel,row,text):
     xt.channel[channel].scribbleStrip[row].setText(text)
